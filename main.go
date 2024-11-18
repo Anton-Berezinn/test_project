@@ -15,34 +15,9 @@ type Handler struct {
 	log *zap.Logger
 }
 
-var h Handler
-
-func init() {
-	cnf := zap.NewProductionConfig()
-	cnf.OutputPaths = []string{"errors.log"}
-	logger, err := cnf.Build()
-	if err != nil {
-		log.Println("error in build zap")
-	}
-	data := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", username, password, dbname)
-	db, err := sql.Open("postgres", data)
-	if err != nil {
-		logger.Warn("error in sql.Open",
-			zap.Error(err))
-	}
-	err = db.Ping()
-	if err != nil {
-		logger.Warn("error in db.Ping",
-			zap.Error(err))
-	}
-	h.db = db
-	h.log = logger
-}
-
 func (h *Handler) MainPage(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	fmt.Fprintf(w, "Hello, World!")
-	http.Redirect(w, r, "/login", http.StatusFound)
-	// добавляем этот код, чтобы сохранить заголовок
+
 }
 
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -64,11 +39,40 @@ func (hs HostSwitch) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) connect_db() {
+	data := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", username, password, dbname)
+	db, err := sql.Open("postgres", data)
+	if err != nil {
+		h.log.Warn("error in sql.Open",
+			zap.Error(err))
+	}
+	err = db.Ping()
+	if err != nil {
+		h.log.Warn("error in db.Ping",
+			zap.Error(err))
+	}
+	h.db = db
+}
+
+func (h *Handler) create_logger() {
+	cnf := zap.NewProductionConfig()
+	cnf.OutputPaths = []string{"errors.log"}
+	logger, err := cnf.Build()
+	if err != nil {
+		log.Println("error in build zap")
+	}
+	h.log = logger
+}
+
 func main() {
+	var h Handler
+	h.create_logger()
+	h.connect_db()
 	router := httprouter.New()
 	router.GET("/", h.MainPage)
 	router.GET("/login", h.LoginPage)
 	hs := make(HostSwitch)
 	hs["localhost:8080"] = router
-	fmt.Println("start server", http.ListenAndServe("localhost:8080", hs))
+	fmt.Println("starting server at :8080")
+	http.ListenAndServe("localhost:8080", hs)
 }
